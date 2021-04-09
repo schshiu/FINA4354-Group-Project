@@ -24,16 +24,19 @@ RF.rate <- 0.06 # change later
 #-------------------------------------------------------------------------------
 
 # 2- Storing data to local repository
+
+# change the xts into dataframe
+output_file =  data.frame(row.names = index(Und.price.raw) , coredata(Und.price.raw))
+
 # determines the saving filename and directory
-saveRDS(Und.price, file = "/Users/fuxipeng/1/港大学习资料/FINA4354/FINA 4354 GP/data/Und_Prices_Processed")
-# !!! This file path has to be altered
+userpath = getwd()
+write.csv(output_file, file = file.path(userpath, "output.csv"))
 # i dont know how to write dependent paths
 
 #-------------------------------------------------------------------------------
 
 # 3- Loading data from local repository
-Und.price <- readRDS("/Users/fuxipeng/1/港大学习资料/FINA4354/FINA 4354 GP/data/Und_Prices_Processed")
-# this save file is not a tabular file, very wierd
+Und.price <- read.csv(file = file.path(userpath, "output.csv"), row.names = 1)
 # different from traditional read.csv command
 
 #-------------------------------------------------------------------------------
