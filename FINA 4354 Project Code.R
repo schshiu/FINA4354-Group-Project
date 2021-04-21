@@ -59,7 +59,7 @@ r <- as.numeric(coredata(DGS6MO$DGS6MO[n]))       #the last day's risk-free rate
 n <- nrow(SP500_raw)
 # we use the SP500 index itself as underlying, not SPY
 # SPY can be used as a tool to hedge
-S <- as.numeric(coredata(SP500_raw$GSPC.Adjusted))#the last day's adjusted index
+S <- as.numeric(coredata(SP500_raw$GSPC.Adjusted[n]))#the last day's adjusted index
 sigma <- as.numeric(sd(dailyReturn(SP500_raw$GSPC.Adjusted)) * sqrt(252))
 q <- as.numeric(coredata(DividendYield[1]))
 t <- 0.5
@@ -70,7 +70,7 @@ t <- 0.5
 rm(n)  #remove unused variables
 
 # 3.2 Option Pricing Functions
-  #S = Spot Price, K = Strike Price, H = Barrier Price
+  #S = Spot Price, K = Strike Price, L = Barrier Price
   #r = Expected Return, q = Dividend Yield
   #sigma = volatility, t = time to maturity
 
@@ -95,7 +95,9 @@ fBSPutOptionPrice <- function(S, K, r, q, sigma, t) {
 
 fBSDownAndInBarrierOptionPrice <- function(S, L, r, q, sigma, t){
   const = (L / S) ^ (2 * (r-q) / (sigma ^ 2) - 1)
+  # here r is replaced by r-q
   ShortForward = exp(-r) * L - S
+  # the discount process does not involve q
   price = ShortForward + fBSCallOptionPrice(S, L, r, q, sigma, t) - 
     const * fBSCallOptionPrice(L ^ 2 / S, L, r, q, sigma, t)
   return(price)
@@ -110,25 +112,31 @@ fBSDigitalCallOption <- function(S, K, r, q, sigma, t) {
 FV <- S         # the "face value" FV sets a standard to other parameters
 # it is set at S (initial price)
 # so the call option at F is at the money
-l <- 0.7        # lower bound: barrier at l*FV
+l <- 0.7        # lower bound: L = l*FV
 g1 <- 1.1       # FV ~ g1*FV is the 1st step
 g2 <- 1.2       # g1*FV ~ g2*FV is the 2nd step
 # > g2*FV is the 3rd step
-h1 <- 0.03       # the 1st step's size: +h1*FV return
-h2 <- 0.03       # the 2nd step's size
-h3 <- 0.04       # the 3rd step's size
+h1 <- 0.03       # the 1st step's size: h1*FV
+h2 <- 0.06       # the 2nd step's size: (h2 - h1)*FV
+h3 <- 0.10       # the 3rd step's size: (h3 - h2)*FV
 
 # 3.4 - Assembly the replicating portfolio
 fBSCompleteProduct <- function(S, r, q, sigma, t, FV, l, g1, g2, h1, h2, h3) {
-  # The return value of this function will be the total return of the product
   DIBarrier <- fBSDownAndInBarrierOptionPrice(S, l*FV, r, q, sigma, t) # D&I barrier
   Call <- fBSCallOptionPrice(S, FV, r, q, sigma, t) # short call at FV
-  DigitalOne <- fBSDigitalCallOption(S, FV, r, q, sigma, t) # 1st digital call
-  DigitalTwo <- fBSDigitalCallOption(S, g1*FV, r, q, sigma, t) # 2nd digital call
-  DigitalThree <- fBSDigitalCallOption(S, g2*FV, r, q, sigma, t) # 3rd digital call
-  price <- S + DIBarrier - Call + h1*FV*DigitalOne + h2*FV*DigitalTwo + h3*FV*DigitalThree
+  # 1st digital call
+  DigitalOne <- h1 * FV * fBSDigitalCallOption(S, FV, r, q, sigma, t)
+  # 2nd digital call
+  DigitalTwo <- (h2 - h1) * FV * fBSDigitalCallOption(S, g1*FV, r, q, sigma, t)
+  # 3rd digital call
+  DigitalThree <- (h3 - h2) * FV * fBSDigitalCallOption(S, g2*FV, r, q, sigma, t)
+  price <- S + DIBarrier - Call + DigitalOne + DigitalTwo + DigitalThree
+  cat(S, DIBarrier, Call, DigitalOne, DigitalTwo, DigitalThree, "\n")
   return(price)
 }
+
+# 3.5 - Checking of price
+cat(fBSCompleteProduct(S, r, q, sigma, t, FV, l, g1, g2, h1, h2, h3))
 
 #-------------------------------------------------------------------------------
 # Plot expected payoff graph
@@ -145,14 +153,7 @@ SecondDigitalCallPayoff <- vector(mode = "numeric", n)
 ThirdDigitalCallPayoff <- vector(mode = "numeric", n)
 rm(n)
 
-k_1 <- S * 0.6  # Low Barrier to protect 
-k_2 <- S * 1.05 # First Strike (Long Call) 
-k_3 <- S * 1.1  # Second Strike (Short Call & Digital Call)
-k_4 <- S * 1.15 # Third Strike (Digital Call)
-k_5 <- S * 1.2  # Last Strike (Digital Call)
-
 # Prices of every options
-#BarrierOptionPrice <- fBSDownAndOutBarrierOptionPrice(S, k_2, k_1, r, q, sigma, t)
 EuropeanLongCallPrice <- fBSCallOptionPrice(S, k_2, r, q, sigma, t)
 EuropeanShortCallPrice <- -1 * fBSCallOptionPrice(S, k_3, r, q, sigma, t)
 EuropeanLongPutPrice <- fBSPutOptionPrice(S, k_1, r, q, sigma, t)
