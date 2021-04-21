@@ -4,7 +4,8 @@ options(scipen = 999) #<-prevent using scientific notation
 
 #-------------------------------------------------------------------------------
 # 1 - Preparation steps
-# Check if client's computer has the library downloaded, then load the required library
+# Check if client's computer has the library downloaded,
+# then load the required library
 list_of_library <- c('xts', 'quantmod', 'ggplot2')
 # Note: 'lubridate' can be added if date calculation is needed
 for (i in list_of_library) {
@@ -54,12 +55,17 @@ rm(SP500TR_DayRet, SP500TR_raw)
 # 3 - Financial Model
 # 3.1 Get parameters
 n <- nrow(DGS6MO)
-r <- as.numeric(coredata(DGS6MO$DGS6MO[n]))             #the last day's risk-free rate
+r <- as.numeric(coredata(DGS6MO$DGS6MO[n]))       #the last day's risk-free rate
 n <- nrow(SP500_raw)
-S <- as.numeric(coredata(SPY$SPY.Adjusted[n]))          #the last day's adjusted price
-sigma <- as.numeric(sd(dailyReturn(SPY$SPY.Adjusted)) * sqrt(252))
+# we use the SP500 index itself as underlying, not SPY
+# SPY can be used as a tool to hedge
+S <- as.numeric(coredata(SP500_raw$GSPC.Adjusted))#the last day's adjusted index
+sigma <- as.numeric(sd(dailyReturn(SP500_raw$GSPC.Adjusted)) * sqrt(252))
 q <- as.numeric(coredata(DividendYield[1]))
 t <- 0.5
+  #Note by Simon: r = 0.04 and q = 0.01552, so r - q is acceptable.
+  #Dividend considered makes our simulation more realistic
+  #Inclusion of q(dividend) will cause some changes to the pricing formulas
 
 rm(n)  #remove unused variables
 
@@ -69,7 +75,7 @@ rm(n)  #remove unused variables
   #sigma = volatility, t = time to maturity
 
 fd1 <- function(S, K, r, q, sigma, t) {
-  d1 <- (log(S / K) + (r - q + 0.5 * sigma ^ 2) * t) / (sigma * sqrt(t)) 
+  d1 <- (log(S / K) + (r - q + 0.5 * sigma ^ 2) * t) / (sigma * sqrt(t))
   return(d1) #d2 <- d1 - sigma*sqrt(t)
 }
 
@@ -87,43 +93,47 @@ fBSPutOptionPrice <- function(S, K, r, q, sigma, t) {
   return(price)
 }
 
-fBSUpAndOutBarrierOptionPrice <- function(S, K, H, r, q, sigma, t) {
-  if (K >= H) {
-    return (0)
-    }
-  else {
-    A <- fBSCallOptionPrice(S, K, r, q, sigma, t)
-    B <- fBSCallOptionPrice(S, H, r, q, sigma, t)
-    C <- (H - K) * exp(-r * t) * pnorm(fd1(S, H, r, q, sigma, t) - sigma * sqrt(t))
-    v <- r - q - sigma ^ 2 /2 
-    D <- (H / S) ^ (2 * v / (sigma ^ 2))
-    E <- fBSCallOptionPrice(H ^ 2 / S, K, r, q, sigma, t)
-    F1 <- fBSCallOptionPrice(H ^ 2 / S, H, r, q, sigma, t)
-    G <- (H - K) * exp(-r * t) * pnorm(fd1(H, S, r, q, sigma, t) - sigma * sqrt(t))
-    price  <- A - B - C - D * (E - F1 - G)
-    return(price)  
-    }
-}
-
-fBSDownAndOutBarrierOptionPrice <- function(S, K, H, r, q, sigma, t) {
-  A <- fBSCallOptionPrice(S, max(H, K), r, q, sigma, t)
-  v <- r - q - sigma ^ 2 /2 
-  B <- (H / S) ^ (2 * v / (sigma ^ 2))
-  C <- fBSCallOptionPrice(H ^ 2 / S, max(H, K), r, q, sigma, t)
-  D <- (max(H, K) - K) * exp(-r * t)
-  E <- pnorm(fd1(S, max(H, K), r, q, sigma, t) - sigma * sqrt(t))
-  F1 <- pnorm(fd1(H ^ 2 / S, max(H, K), r, q, sigma, t) - sigma * sqrt(t))
-  price <- A - B * C + D * (E - B * F1)
+fBSDownAndInBarrierOptionPrice <- function(S, L, r, q, sigma, t){
+  const = (L / S) ^ (2 * (r-q) / (sigma ^ 2) - 1)
+  ShortForward = exp(-r) * L - S
+  price = ShortForward + fBSCallOptionPrice(S, L, r, q, sigma, t) - 
+    const * fBSCallOptionPrice(L ^ 2 / S, L, r, q, sigma, t)
   return(price)
-  }
+}
 
 fBSDigitalCallOption <- function(S, K, r, q, sigma, t) {
   price <- exp(-r * t) * pnorm(fd1(S, K, r, q, sigma, t) - sigma * sqrt(t))
   return(price)
 }
 
+# 3.3 - setting other parameters & apply assumptions
+FV <- S         # the "face value" FV sets a standard to other parameters
+# it is set at S (initial price)
+# so the call option at F is at the money
+l <- 0.7        # lower bound: barrier at l*FV
+g1 <- 1.1       # FV ~ g1*FV is the 1st step
+g2 <- 1.2       # g1*FV ~ g2*FV is the 2nd step
+# > g2*FV is the 3rd step
+h1 <- 0.03       # the 1st step's size: +h1*FV return
+h2 <- 0.03       # the 2nd step's size
+h3 <- 0.04       # the 3rd step's size
+
+# 3.4 - Assembly the replicating portfolio
+fBSCompleteProduct <- function(S, r, q, sigma, t, FV, l, g1, g2, h1, h2, h3) {
+  # The return value of this function will be the total return of the product
+  DIBarrier <- fBSDownAndInBarrierOptionPrice(S, l*FV, r, q, sigma, t) # D&I barrier
+  Call <- fBSCallOptionPrice(S, FV, r, q, sigma, t) # short call at FV
+  DigitalOne <- fBSDigitalCallOption(S, FV, r, q, sigma, t) # 1st digital call
+  DigitalTwo <- fBSDigitalCallOption(S, g1*FV, r, q, sigma, t) # 2nd digital call
+  DigitalThree <- fBSDigitalCallOption(S, g2*FV, r, q, sigma, t) # 3rd digital call
+  price <- S + DIBarrier - Call + h1*FV*DigitalOne + h2*FV*DigitalTwo + h3*FV*DigitalThree
+  return(price)
+}
+
 #-------------------------------------------------------------------------------
 # Plot expected payoff graph
+  #Note that barrier option cannot be expressed in t = T plot,
+  #we applied a normal put option to replace the down-and-in option
 minprice <- 0.1 * S 
 maxprice <- 1.9 * S 
 prices <- seq(minprice, maxprice, 1)
