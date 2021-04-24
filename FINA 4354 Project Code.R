@@ -1,13 +1,14 @@
+
 #FINA 4354 Project
 rm(list = ls())
 options(scipen = 999) #<-prevent using scientific notation
 
 #-------------------------------------------------------------------------------
 # 1 - Preparation steps
-  # Check if client's computer has the library downloaded,
-  # then load the required library
+# Check if client's computer has the library downloaded,
+# then load the required library
 list.of.library <- c('xts', 'quantmod', 'ggplot2')
-  # Note: 'lubridate' can be added if date calculation is needed
+# Note: 'lubridate' can be added if date calculation is needed
 for (i in list.of.library) {
   print(i)
   if (i %in% rownames(installed.packages()) == FALSE) {
@@ -22,22 +23,22 @@ rm(list.of.library, i) #Free up memory
 # 2.1 - Find the dividend yield with S&P 500
 #Raw Data
 SP500.raw <- na.locf(getSymbols("^GSPC",
-                               from = "2018-01-01", 
-                               auto.assign = FALSE)) #S&P500 Index
+                                from = "2018-01-01", 
+                                auto.assign = FALSE)) #S&P500 Index
 SP500TR.raw <- na.locf(getSymbols("^SP500TR", 
-                                 from = "2018-01-01", 
-                                 auto.assign = FALSE)) #S&P500 Total Return Index
+                                  from = "2018-01-01", 
+                                  auto.assign = FALSE)) #S&P500 Total Return Index
 SPY <- na.locf(getSymbols("SPY", 
                           from = "2018-01-01", 
                           auto.assign = FALSE))
 
 #Get daily return of 2020
 SP500.DayRet <- dailyReturn(SP500.raw$GSPC.Adjusted, 
-                                         subset = NULL,
-                                         type = 'log')
+                            subset = NULL,
+                            type = 'log')
 SP500TR.DayRet <- dailyReturn(SP500TR.raw$SP500TR.Adjusted,
-                                              subset = NULL, 
-                                          type = 'log')
+                              subset = NULL, 
+                              type = 'log')
 
 #-------------------------------------------------------------------------------
 # 2.2 - find risk-free rate
@@ -48,28 +49,27 @@ SP500TR.DayRet <- dailyReturn(SP500TR.raw$SP500TR.Adjusted,
 DGS6MO <- na.locf(getSymbols("DGS6MO", src = "FRED", auto.assign = FALSE))
 #DGS1YR <- na.locf(getSymbols("DGS1", src = "FRED", auto.assign = FALSE))
 
-rm(SP500TR.DayRet, SP500TR.raw)
-
 #-------------------------------------------------------------------------------
 # 2.3 - Data storage and loading
-  # Misc: Storing data to local repository
-  # change the xts into dataframe
+# Misc: Storing data to local repository
+# change the xts into dataframe
 
-list.of.rawdata <- c('SP500.raw', 'SPY', 'SP500TR.DayRet', 'DGS6MO')
+list.of.rawdata <- c('SP500.raw', 'SPY', 'DGS6MO')
 
+write.csv(data.frame(row.names = index(SP500.raw), coredata(SP500.raw)),
+          file = file.path(getwd(), 'SP500.raw.csv'))
+write.csv(data.frame(row.names = index(SPY), coredata(SPY)),
+          file = file.path(getwd(), 'SPY.csv'))
+write.csv(data.frame(row.names = index(SP500TR.DayRet), coredata(SP500TR.DayRet)),
+          file = file.path(getwd(), 'SP500TR.DayRet.csv'))
+write.csv(data.frame(row.names = index(DGS6MO), coredata(DGS6MO)),
+          file = file.path(getwd(), 'DGS6MO.csv'))
+
+# Misc: Loading data from local repository
 for (i in list.of.rawdata) {
-  output.file <- data.frame(row.names = index(i) , coredata(i))
-  # determines the saving filename and directory
   userpath <- getwd()
   filename <- paste(i, sep = "", '.csv')
-  write.csv(output.file, file = file.path(userpath, filename))
-}
-
-  # Misc: Loading data from local repository
-for (i in list.of.rawdata) {
-  userpath <- getwd()
-  filename <- paste(i, sep = "", '.csv')
-  read.csv(file = file.path(userpath, filename), row.names = 1)
+  i <- read.csv(file = file.path(userpath, filename), row.names = 1)
 }
 
 rm(filename, i, list.of.rawdata)
@@ -81,19 +81,19 @@ rm(filename, i, list.of.rawdata)
 #Get Dividend Yield approximation
 dividend.yield <- sum((SP500TR.DayRet['2020'] - SP500.DayRet['2020']) *
                         SP500.raw['2020',"GSPC.Adjusted"])/
-  SP500.raw['2020-12-31',"GSPC.Adjusted"]
+                  SP500.raw['2020-12-31',"GSPC.Adjusted"]
 q <- as.numeric(coredata(dividend.yield[1]))
 
 #normal parameters
 n <- nrow(DGS6MO)
 r <- as.numeric(coredata(DGS6MO$DGS6MO[n])) / 100
-  #the last day's risk-free rate: note that the rate is in %
+#the last day's risk-free rate: note that the rate is in %
 n <- nrow(SP500.raw)
-  # we use the SP500 index itself as underlying, not SPY
-  # SPY can be used as a tool to hedge
+# we use the SP500 index itself as underlying, not SPY
+# SPY can be used as a tool to hedge
 S <- as.numeric(coredata(SP500.raw$GSPC.Adjusted[n]))#the last day's adjusted index
 miu <- as.numeric(mean(dailyReturn(SP500.raw$GSPC.Adjusted)))
-  #miu is for estimation purpose, not for simulation
+#miu is for estimation purpose, not for simulation
 sigma <- as.numeric(sd(dailyReturn(SP500.raw$GSPC.Adjusted)) * sqrt(252))
 t <- 0.5
 
@@ -120,9 +120,9 @@ rm(n)  #remove unused variables
 
 #-------------------------------------------------------------------------------
 # 3.2 Option Pricing Functions
-  #S = Spot Price, K = Strike Price, L = Barrier Price
-  #r = Expected Return, q = Dividend Yield
-  #sigma = volatility, t = time to maturity
+#S = Spot Price, K = Strike Price, L = Barrier Price
+#r = Expected Return, q = Dividend Yield
+#sigma = volatility, t = time to maturity
 
 fd1 <- function(S, K, r, q, sigma, t) {
   d1 <- (log(S / K) + (r - q + 0.5 * sigma ^ 2) * t) / (sigma * sqrt(t))
@@ -164,11 +164,11 @@ fBS.digital.call.price <- function(S, K, r, q, sigma, t) {
 DI.barrier <- fBS.DI.barrier.price(S, l*FV, r, q, sigma, t) # D&I barrier
 call <- fBS.call.price(S, FV, r, q, sigma, t)               # short call at FV
 digital.one <- fBS.digital.call.price(S, FV, r, q, sigma, t)
-  # 1st digital call
+# 1st digital call
 digital.two <- fBS.digital.call.price(S, g1*FV, r, q, sigma, t)
-  # 2nd digital call
+# 2nd digital call
 digital.three <- fBS.digital.call.price(S, g2*FV, r, q, sigma, t)
-  # 3rd digital call
+# 3rd digital call
 cat(S, DI.barrier, digital.one, digital.two, digital.three, '\n')
 
 #-------------------------------------------------------------------------------
@@ -204,8 +204,8 @@ cat("total price =", total.price, "S = ", S, "\n")
 
 #-------------------------------------------------------------------------------
 # Plot expected payoff graph
-  #Note that barrier option cannot be expressed in t = T plot,
-  #we applied a normal put option to replace the down-and-in option
+#Note that barrier option cannot be expressed in t = T plot,
+#we applied a normal put option to replace the down-and-in option
 minprice <- 0.1 * S 
 maxprice <- 1.9 * S 
 prices <- seq(minprice, maxprice, 1)
@@ -260,12 +260,12 @@ Graph_SecondDigitalPayoff <- SecondDigitalCallPayoff - as.vector(SecondDigitalCa
 Graph_ThirdDigitalPayoff <- ThirdDigitalCallPayoff - as.vector(ThirdDigitalCallPrice)
 
 OverallPayoff <- rowSums(cbind(Graph_LongCallPayoff,
-                        Graph_ShortCallPayoff,
-                        Graph_LongPutPayoff,
-                        Graph_ShortPutPayoff,
-                        Graph_FirstDigitalPayoff,
-                        Graph_SecondDigitalPayoff, 
-                        Graph_ThirdDigitalPayoff))
+                               Graph_ShortCallPayoff,
+                               Graph_LongPutPayoff,
+                               Graph_ShortPutPayoff,
+                               Graph_FirstDigitalPayoff,
+                               Graph_SecondDigitalPayoff, 
+                               Graph_ThirdDigitalPayoff))
 
 # Generate a data_frame all vectors in order to plot the strategy payoffs using ggplot
 results <- data.frame(cbind(Graph_LongCallPayoff,
@@ -293,4 +293,3 @@ ggplot(results, aes(x=prices)) +
   xlab("Undelying Price") +
   ylab("Payoff") +
   ggtitle("Product Payoff")  
-
