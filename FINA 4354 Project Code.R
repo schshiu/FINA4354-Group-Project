@@ -239,7 +239,7 @@ for (i in 1:length(prices)) {
 }
 
 #Payoff graph
-overall.payoff <- rowSums(cbind(payoff.stock,
+payoff.overall <- rowSums(cbind(payoff.stock,
                                 payoff.DI.barrier,
                                 payoff.call,
                                 payoff.first.digital.call,
@@ -247,7 +247,7 @@ overall.payoff <- rowSums(cbind(payoff.stock,
 
 ggplot(results, aes(x=prices)) + 
   geom_line(linetype = "dashed", aes(y = payoff.stock, color = "Stock Price")) +
-  geom_line(aes(y = overall.payoff, color="Payoff")) +
+  geom_line(aes(y = payoff.overall, color="Payoff")) +
   scale_colour_manual("", 
                       breaks = c("Stock Price", "Payoff"), 
                       values = c("darkblue", "black")) + 
@@ -262,7 +262,7 @@ profit.call <- payoff.call - as.vector(call)
 profit.first.digital.call <- payoff.first.digital.call - as.vector(digital.one)
 profit.second.digital.call <- payoff.second.digital.call - as.vector(digital.two)
 
-overall.profit <- rowSums(cbind(profit.stock,
+profit.overall <- rowSums(cbind(profit.stock,
                                profit.DI.barrier,
                                profit.call,
                                profit.first.digital.call,
@@ -281,7 +281,7 @@ ggplot(results, aes(x=prices)) +
   geom_line(linetype = "dashed", aes(y = profit.call, color = "EuropeanCall")) +
   geom_line(linetype = "dashed", aes(y = profit.first.digital.call, color = "FirstDigital")) +
   geom_line(linetype = "dashed", aes(y = profit.second.digital.call, color = "SecondDigital")) +
-  geom_line(aes(y = overall.profit, color="Profit")) +
+  geom_line(aes(y = profit.overall, color="Profit")) +
   scale_colour_manual("", 
                       breaks = c("Stock", "DIBarrier", "EuropeanCall", "FirstDigital",
                                  "SecondDigital", "Profit"),
@@ -290,3 +290,9 @@ ggplot(results, aes(x=prices)) +
   xlab("Undelying Price") +
   ylab("Profit") +
   ggtitle("Product Profit") 
+
+#cleaning up
+rm(payoff.stock, payoff.DI.barrier, payoff.call,
+   payoff.first.digital.call, payoff.second.digital.call, payoff.overall)
+rm(profit.stock, profit.DI.barrier, profit.call, 
+   profit.first.digital.call, profit.second.digital.call, profit.overall)
