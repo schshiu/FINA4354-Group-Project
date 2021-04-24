@@ -4,71 +4,121 @@ options(scipen = 999) #<-prevent using scientific notation
 
 #-------------------------------------------------------------------------------
 # 1 - Preparation steps
-# Check if client's computer has the library downloaded,
-# then load the required library
-list_of_library <- c('xts', 'quantmod', 'ggplot2')
-# Note: 'lubridate' can be added if date calculation is needed
-for (i in list_of_library) {
+  # Check if client's computer has the library downloaded,
+  # then load the required library
+list.of.library <- c('xts', 'quantmod', 'ggplot2')
+  # Note: 'lubridate' can be added if date calculation is needed
+for (i in list.of.library) {
   print(i)
   if (i %in% rownames(installed.packages()) == FALSE) {
     install.packages(i, character.only = TRUE)
   }
   library(i, character.only = TRUE)
 }
-rm(list_of_library, i) #Free up memory
+rm(list.of.library, i) #Free up memory
 
 #-------------------------------------------------------------------------------
-# 2 - Data download
+# 2 - Data processing
 # 2.1 - Find the dividend yield with S&P 500
 #Raw Data
-SP500_raw <- na.locf(getSymbols("^GSPC",
+SP500.raw <- na.locf(getSymbols("^GSPC",
                                from = "2018-01-01", 
                                auto.assign = FALSE)) #S&P500 Index
-SP500TR_raw <- na.locf(getSymbols("^SP500TR", 
+SP500TR.raw <- na.locf(getSymbols("^SP500TR", 
                                  from = "2018-01-01", 
                                  auto.assign = FALSE)) #S&P500 Total Return Index
 SPY <- na.locf(getSymbols("SPY", 
                           from = "2018-01-01", 
                           auto.assign = FALSE))
+
 #Get daily return of 2020
-SP500_DayRet <- dailyReturn(SP500_raw$GSPC.Adjusted, 
+SP500.DayRet <- dailyReturn(SP500.raw$GSPC.Adjusted, 
                                          subset = NULL,
                                          type = 'log')
-SP500TR_DayRet <- dailyReturn(SP500TR_raw$SP500TR.Adjusted,
+SP500TR.DayRet <- dailyReturn(SP500TR.raw$SP500TR.Adjusted,
                                               subset = NULL, 
                                           type = 'log')
-#Get Dividend Yield approximation
-DividendYield <- sum((SP500TR_DayRet['2020'] - SP500_DayRet['2020']) *
-                      SP500_raw['2020',"GSPC.Adjusted"])/
-                      SP500_raw['2020-12-31',"GSPC.Adjusted"]
 
-# 2.2 find risk-free rate
+#-------------------------------------------------------------------------------
+# 2.2 - find risk-free rate
 # We prepare the 1m, 3m, 6m, 1y version of risk-free rate
+# If we want to change the tenor, we can change t correspondingly
 #DGS1MO <- na.locf(getSymbols("DGS1MO", src = "FRED", auto.assign = FALSE))
 #DGS3MO <- na.locf(getSymbols("DGS3MO", src = "FRED", auto.assign = FALSE))
 DGS6MO <- na.locf(getSymbols("DGS6MO", src = "FRED", auto.assign = FALSE))
 #DGS1YR <- na.locf(getSymbols("DGS1", src = "FRED", auto.assign = FALSE))
 
-rm(SP500TR_DayRet, SP500TR_raw)
+rm(SP500TR.DayRet, SP500TR.raw)
+
+#-------------------------------------------------------------------------------
+# 2.3 - Data storage and loading
+  # Misc: Storing data to local repository
+  # change the xts into dataframe
+
+list.of.rawdata <- c('SP500.raw', 'SPY', 'SP500TR.DayRet', 'DGS6MO')
+
+for (i in list.of.rawdata) {
+  output.file <- data.frame(row.names = index(i) , coredata(i))
+  # determines the saving filename and directory
+  userpath <- getwd()
+  filename <- paste(i, sep = "", '.csv')
+  write.csv(output.file, file = file.path(userpath, filename))
+}
+
+  # Misc: Loading data from local repository
+for (i in list.of.rawdata) {
+  userpath <- getwd()
+  filename <- paste(i, sep = "", '.csv')
+  read.csv(file = file.path(userpath, filename), row.names = 1)
+}
+
+rm(filename, i, list.of.rawdata)
 #-------------------------------------------------------------------------------
 
 # 3 - Financial Model
 # 3.1 Get parameters
+
+#Get Dividend Yield approximation
+dividend.yield <- sum((SP500TR.DayRet['2020'] - SP500.DayRet['2020']) *
+                        SP500.raw['2020',"GSPC.Adjusted"])/
+  SP500.raw['2020-12-31',"GSPC.Adjusted"]
+q <- as.numeric(coredata(dividend.yield[1]))
+
+#normal parameters
 n <- nrow(DGS6MO)
-r <- as.numeric(coredata(DGS6MO$DGS6MO[n]))       #the last day's risk-free rate
-n <- nrow(SP500_raw)
-# we use the SP500 index itself as underlying, not SPY
-# SPY can be used as a tool to hedge
-S <- as.numeric(coredata(SP500_raw$GSPC.Adjusted[n]))#the last day's adjusted index
-sigma <- as.numeric(sd(dailyReturn(SP500_raw$GSPC.Adjusted)) * sqrt(252))
-q <- as.numeric(coredata(DividendYield[1]))
+r <- as.numeric(coredata(DGS6MO$DGS6MO[n])) / 100
+  #the last day's risk-free rate: note that the rate is in %
+n <- nrow(SP500.raw)
+  # we use the SP500 index itself as underlying, not SPY
+  # SPY can be used as a tool to hedge
+S <- as.numeric(coredata(SP500.raw$GSPC.Adjusted[n]))#the last day's adjusted index
+miu <- as.numeric(mean(dailyReturn(SP500.raw$GSPC.Adjusted)))
+  #miu is for estimation purpose, not for simulation
+sigma <- as.numeric(sd(dailyReturn(SP500.raw$GSPC.Adjusted)) * sqrt(252))
 t <- 0.5
-  #Note by Simon: r = 0.04 and q = 0.01552, so r - q is acceptable.
-  #Dividend considered makes our simulation more realistic
-  #Inclusion of q(dividend) will cause some changes to the pricing formulas
+
+# Other parameters to determine
+FV <- S         # the "face value" FV sets a standard to other parameters
+# it is set at S (initial price), so the call option at F is at the money
+
+#miu = 0.00062896
+total.miu <- miu * 126
+cat(total.miu)
+#The total miu in the 6mo period is approx. 8%
+#So, S&P500 investors generally expect a return of 8%
+#We set g1 = 1.04 (half the expected return), g2 = 1.08 (expected return)
+
+l <- 0.7        # lower bound: L = l*FV
+g1 <- 1.04       # FV ~ g1*FV is the 1st step
+g2 <- 1.08       # g1*FV ~ g2*FV is the 2nd step
+# > g2*FV is the 3rd step
+
+# step sizes h1, h2 and h3:
+# key factors to be determined. To be introduced later
 
 rm(n)  #remove unused variables
 
+#-------------------------------------------------------------------------------
 # 3.2 Option Pricing Functions
   #S = Spot Price, K = Strike Price, L = Barrier Price
   #r = Expected Return, q = Dividend Yield
@@ -79,64 +129,78 @@ fd1 <- function(S, K, r, q, sigma, t) {
   return(d1) #d2 <- d1 - sigma*sqrt(t)
 }
 
-fBSCallOptionPrice <- function(S, K, r, q, sigma, t) { 
+fBS.call.price <- function(S, K, r, q, sigma, t) { 
   d1 <- fd1(S, K, r, q, sigma, t)
   d2 <- d1 - sigma * sqrt(t) 
   price <- S * exp(-q * t) * pnorm(d1) - K * exp(-r * t) * pnorm(d2)
   return(price)
 }
 
-fBSPutOptionPrice <- function(S, K, r, q, sigma, t) {
+fBS.put.price <- function(S, K, r, q, sigma, t) {
   d1 <- fd1(S, K, r, q, sigma, t)
   d2 <- d1 - sigma * sqrt(t) 
   price <- K * exp(-r * t) * pnorm(-d2) - S * exp(-q * t) * pnorm(-d1)
   return(price)
 }
 
-fBSDownAndInBarrierOptionPrice <- function(S, L, r, q, sigma, t){
+fBS.DI.barrier.price <- function(S, L, r, q, sigma, t){
   const = (L / S) ^ (2 * (r-q) / (sigma ^ 2) - 1)
   # here r is replaced by r-q
-  ShortForward = exp(-r) * L - S
+  short.forward = exp(-r) * L - S
   # the discount process does not involve q
-  price = ShortForward + fBSCallOptionPrice(S, L, r, q, sigma, t) - 
-    const * fBSCallOptionPrice(L ^ 2 / S, L, r, q, sigma, t)
+  price = short.forward + fBS.call.price(S, L, r, q, sigma, t) - 
+    const * fBS.call.price(L ^ 2 / S, L, r, q, sigma, t)
   return(price)
 }
 
-fBSDigitalCallOption <- function(S, K, r, q, sigma, t) {
+fBS.digital.call.price <- function(S, K, r, q, sigma, t) {
   price <- exp(-r * t) * pnorm(fd1(S, K, r, q, sigma, t) - sigma * sqrt(t))
   return(price)
 }
 
-# 3.3 - setting other parameters & apply assumptions
-FV <- S         # the "face value" FV sets a standard to other parameters
-# it is set at S (initial price)
-# so the call option at F is at the money
-l <- 0.7        # lower bound: L = l*FV
-g1 <- 1.1       # FV ~ g1*FV is the 1st step
-g2 <- 1.2       # g1*FV ~ g2*FV is the 2nd step
-# > g2*FV is the 3rd step
-h1 <- 0.03       # the 1st step's size: h1*FV
-h2 <- 0.06       # the 2nd step's size: (h2 - h1)*FV
-h3 <- 0.10       # the 3rd step's size: (h3 - h2)*FV
-
-# 3.4 - Assembly the replicating portfolio
-fBSCompleteProduct <- function(S, r, q, sigma, t, FV, l, g1, g2, h1, h2, h3) {
-  DIBarrier <- fBSDownAndInBarrierOptionPrice(S, l*FV, r, q, sigma, t) # D&I barrier
-  Call <- fBSCallOptionPrice(S, FV, r, q, sigma, t) # short call at FV
+#-------------------------------------------------------------------------------
+# 3.4 - Price calculation of each option (and stock per se)
+# long stock: S
+DI.barrier <- fBS.DI.barrier.price(S, l*FV, r, q, sigma, t) # D&I barrier
+call <- fBS.call.price(S, FV, r, q, sigma, t)               # short call at FV
+digital.one <- fBS.digital.call.price(S, FV, r, q, sigma, t)
   # 1st digital call
-  DigitalOne <- h1 * FV * fBSDigitalCallOption(S, FV, r, q, sigma, t)
+digital.two <- fBS.digital.call.price(S, g1*FV, r, q, sigma, t)
   # 2nd digital call
-  DigitalTwo <- (h2 - h1) * FV * fBSDigitalCallOption(S, g1*FV, r, q, sigma, t)
+digital.three <- fBS.digital.call.price(S, g2*FV, r, q, sigma, t)
   # 3rd digital call
-  DigitalThree <- (h3 - h2) * FV * fBSDigitalCallOption(S, g2*FV, r, q, sigma, t)
-  price <- S + DIBarrier - Call + DigitalOne + DigitalTwo + DigitalThree
-  cat(S, DIBarrier, Call, DigitalOne, DigitalTwo, DigitalThree, "\n")
-  return(price)
-}
+cat(S, DI.barrier, digital.one, digital.two, digital.three, '\n')
 
-# 3.5 - Checking of price
-cat(fBSCompleteProduct(S, r, q, sigma, t, FV, l, g1, g2, h1, h2, h3))
+#-------------------------------------------------------------------------------
+# 3.5 - Exploration of step size hi (i = 1, 2, 3)
+
+# We set that h1, h2 are fractions of h3
+# so there is only 1 unknown in 1 equation, and h3 is the target to be found
+# assume h1 = k1*h3, h2 = k2*h3
+
+#total stock price = S + DI.barrier - call + h1*digital.one + (h2-h1)*digital.two + 
+# (h3-h2)*digital.three
+#= S + DI.barrier - call + (k1*dig.one + (k2-k1)*dig.two + (1-k2)*dig.three)*h3
+#we take total stock price = FV = S
+#h3 = (call - DI.barrier)/(k1*dig.one + (k2-k1)*dig.two + (1-k2)*dig.three)
+
+#value take for k1, k2
+k1 <- 0.3
+k2 <- 0.6
+
+h3 = (call - DI.barrier)/(k1*digital.one + (k2-k1)*digital.two + 
+                            (1-k2)*digital.three)
+# the 3rd step's size: (h3 - h2)*FV
+h1 <- k1 * h3  # the 2nd step's size: (h2 - h1)*FV
+h2 <- k2 * h3  # the 1st step's size: h1*FV
+
+cat("h1 =", h1, "\nh2 =", h2, "\nh3 =", h3, "\n")
+
+#check of equality
+total.price = S + DI.barrier - call + h1*digital.one + (h2-h1)*digital.two + 
+  (h3-h2)*digital.three
+cat("total price =", total.price, "S = ", S, "\n")
+
 
 #-------------------------------------------------------------------------------
 # Plot expected payoff graph
@@ -152,15 +216,6 @@ FirstDigitalCallPayoff <- vector(mode = "numeric", n)
 SecondDigitalCallPayoff <- vector(mode = "numeric", n)
 ThirdDigitalCallPayoff <- vector(mode = "numeric", n)
 rm(n)
-
-# Prices of every options
-EuropeanLongCallPrice <- fBSCallOptionPrice(S, k_2, r, q, sigma, t)
-EuropeanShortCallPrice <- -1 * fBSCallOptionPrice(S, k_3, r, q, sigma, t)
-EuropeanLongPutPrice <- fBSPutOptionPrice(S, k_1, r, q, sigma, t)
-EuropeanShortPutPrice <- -1 * fBSPutOptionPrice(S, k_2, r, q, sigma, t)
-FirstDigitalCallPrice <- fBSDigitalCallOption(S, k_3, r, q, sigma, t)
-SecondDigitalCallPrice <- fBSDigitalCallOption(S, k_4, r, q, sigma, t)
-ThirdDigitalCallPrice <- fBSDigitalCallOption(S, k_5, r, q, sigma, t)
 
 # Payoff Function
 #Graph_BarrierPayoff <- prices - as.vector(k_2) - as.vector(BarrierOptionPrice)
@@ -239,23 +294,3 @@ ggplot(results, aes(x=prices)) +
   ylab("Payoff") +
   ggtitle("Product Payoff")  
 
-
-#-------------------------------------------------------------------------------
-# Misc: Storing data to local repository
-# change the xts into dataframe
-#list_of_rawdata <- c('SP500_raw')
-for (i in list_of_rawdata) {
-  output_file <-  data.frame(row.names = index(i) , coredata(i))
-  # determines the saving filename and directory
-  userpath <- getwd()
-  filename <- paste(i ,sep = "", '.csv')
-  write.csv(output_file, file = file.path(userpath, filename))
-}
-#-------------------------------------------------------------------------------
-# Misc: Loading data from local repository
-for (i in list_of_rawdata) {
-  userpath <- getwd()
-  filename <- paste(i ,sep = "", '.csv')
-  read.csv(file = file.path(userpath, filename), row.names = 1)
-}
-#-------------------------------------------------------------------------------
