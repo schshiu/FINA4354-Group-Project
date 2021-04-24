@@ -135,6 +135,12 @@ fd1 <- function(S, K, r, q, sigma, t) {
   return(d1) #d2 <- d1 - sigma*sqrt(t)
 }
 
+#Value of d2
+fd2 <- function(S, K, r, q, sigma, t) {
+  d2 <- fd1(S, K, r, q, sigma, t) - sigma * sqrt(t)
+  return(d2)
+}
+
 #Price of European call
 fBS.call.price <- function(S, K, r, q, sigma, t) { 
   d1 <- fd1(S, K, r, q, sigma, t)
@@ -153,11 +159,11 @@ fBS.put.price <- function(S, K, r, q, sigma, t) {
 
 #Price of down-and-in barrier option
 fBS.DI.barrier.price <- function(S, L, r, q, sigma, t){
-  const = (L / S) ^ (2 * (r-q) / (sigma ^ 2) - 1)
+  const <- (L / S) ^ (2 * (r-q) / (sigma ^ 2) - 1)
   # here r is replaced by r-q
-  short.forward = exp(-r) * L - S
+  short.forward <- exp(-r) * L - S
   # the discount process does not involve q
-  price = short.forward + fBS.call.price(S, L, r, q, sigma, t) - 
+  price <- short.forward + fBS.call.price(S, L, r, q, sigma, t) - 
     const * fBS.call.price(L ^ 2 / S, L, r, q, sigma, t)
   return(price)
 }
@@ -168,6 +174,88 @@ fBS.digital.call.price <- function(S, K, r, q, sigma, t) {
   return(price)
 }
 
+#Price of Down-and-In Barrier Put Option
+fBS.DI.put.price <- function(S, K, L, r, q, sigma, t) {
+    price <- (L / S) ^ (2 * (r - q - sigma ^ 2 /2) / (sigma ^ 2)) * 
+      (fBS.call.price(L ^ 2/ S, K, r, q, sigma, t) - 
+         fBS.call.price(L ^ 2/ S, L, r, q, sigma, t) -
+         (L - K) * exp(-r * t) * pnorm(fd2(L, S, r, q, sigma, t))) * (K > L) +
+         (fBS.put.price(S, min(L, K), r, q, sigma, t) -
+            (min(L, K) - K) * exp(-r * t) * 
+            pnorm(-fd2(S, min(L, K), r, q, sigma, t)))
+    return(price)
+}
+
+#4.extra possible section for freaking hedging, please feel free to delete if not used
+# Beware of the Callput variable when using the functions 
+# delta is change of option price against change of underlying price
+# vega is change of option price against volatility
+# theta is change of option price against time to maturity
+# rho is change of option price against interest rate
+# lambda is change of option price against each % change in underlying price
+# gamma is change of DELTA against underlying price
+
+fBS.delta <- function(CallPut, S, K, r, q, sigma, t) {
+  d1 <- fd1(S, K, r, q, sigma, t)
+  if (CallPut == 'Call') {
+    delta <- pnorm(d1)
+  }
+  else {
+    delta <- -pnorm(-d1)
+  }
+  return(delta)
+}
+
+fBS.vega <- function(Callput, S, K, r, q, sigma, t) {
+  d1 <- fd1(S, K, r, q, sigma, t)
+  vega <- S * sqrt(t) * pnorm(d1)
+  return(vega)
+}
+
+fBS.theta <- function(Callput, S, K, r, q, sigma, t) {
+  d1 <- fd1(S, K, r, q, sigma, t) 
+  d2 <- fd2(S, K, r, q, sigma, t)
+  if (CallPut == 'Call') {
+    theta <- K * exp(-r * t) * (sigma / (2 * sqrt(t)) * dnorm(d2) + r * pnorm(d2)) -
+      S * q * exp(-q * t) * pnorm(d1)
+  }
+  else {
+    theta <- K * exp(-r * t) * (sigma / (2 * sqrt(t)) * dnorm(d2) - r * pnorm(-d2)) +
+      S * q * exp(-q * t) * pnorm(-d1)
+  }
+  return(theta)
+}
+
+fBS.rho <- function(Callput, S, K, r, q, sigma, t) {
+  d2 <- fd2(S, K, r, q, sigma, t)
+  if (CallPut == 'Call') {
+    rho <- t * K * exp(-r * t) * prorm(d2)
+  }
+  else {
+    rho <- -t * K * exp(-r * t) * prorm(-d2)
+  }
+  return(rho)
+}
+
+fBS.lambda <- function(Callput, S, K, r, q, sigma, t) {
+  d1 <- fd1(S, K, r, q, sigma, t) 
+  d2 <- fd2(S, K, r, q, sigma, t)
+  if (CallPut == 'Call') {
+    lambda <- S * exp(-q * t) * pnorm(d1) / 
+      (S * exp(-q * t) * pnorm(d1) - K * exp(-r * t) * pnorm(d2))
+  }
+  else {
+    lambda <- S * exp(-q * t) * pnorm(-d1) / 
+      (S * exp(-q * t) * pnorm(-d1) - K * exp(-r * t) * pnorm(-d2))
+  }
+  return(lambda)
+}
+
+fBS.gamma <- function(Callput, S, K, r, q, sigma, t) {
+  d1 <- fd1(S, K, r, q, sigma, t) 
+  gamma <- exp(-q * t) * dnorm(d1) / (S * sigma * sqrt(t))
+  return(gamma)
+}
 #-------------------------------------------------------------------------------
 
 # 4.2 - Price calculation of each option (and stock per se)
