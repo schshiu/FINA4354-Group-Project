@@ -506,7 +506,7 @@ combined[1:(floor(l1*S - minprice)), 2] <- NA
 
 ggplot(combined / S, aes(x = prices / S)) + 
   geom_line(linetype = "dashed", 
-    aes(y = profit.notrigger.overall, color="Before Triggering")) + 
+            aes(y = profit.notrigger.overall, color="Before Triggering")) + 
   geom_line(aes(y = profit.trigger.overall, color="After Triggering")) + 
   scale_colour_manual("", 
                       breaks = c("Before Triggering", "After Triggering"),
@@ -514,12 +514,83 @@ ggplot(combined / S, aes(x = prices / S)) +
   xlab("Underlying Price") +
   ylab("Profit") +
   ggtitle("Product Profit Percentage (R) at Maturity, before & after triggering"
-          ) + 
+  ) + 
+  annotate(geom = "label", x = 1, y = -0.25, size = 3, 
+           label = "When the safety level is triggered") + 
+  annotate(geom = 'label', x = 1.2, y = 0, size = 3,
+           label = "Ladder Step 1, 2, 3") +
+  annotate(geom = "point", x = c(l2, g1, g2, g3), 
+           y = c(-628/S, 376/S, 580/S, 785/S), 
+           size = 7, shape= 21,
+           fill="transparent") +
+  annotate(geom = "segment", linetype = "dashed", 
+           x = l2, xend = l2 + 0.00000001, 
+           y = -0.5, yend = 0.5,
+           colour = "blue") +
   xlim(0.5, 1.5) + ylim(-0.5, 0.5)
 
 ggsave("../graphs/ProfitPlotCombined.png", width = 9.8, height = 8)
 
 #-------------------------------------------------------------------------------
+
+# 6.3 - Plot delta graph
+# 6.3.1 - Preparation
+
+minprice <- 0.5 * S
+maxprice <- 1.5 * S
+prices <- seq(minprice, maxprice, 1)
+n <- length(prices)
+
+# delta setting
+
+graph.delta.DI.put <- vector(mode = "numeric", n)
+graph.delta.call <- vector(mode = "numeric", n)
+graph.delta.digital.one <- vector(mode = "numeric", n)
+graph.delta.digital.two <- vector(mode = "numeric", n)
+graph.delta.overall <- vector(mode = "numeric", n)
+
+for (i in 1:n) {
+  graph.delta.DI.put[i] = fBS.DI.put.delta(prices[i], l2*S, l1*S, r, q, sigma, t)
+  graph.delta.call[i] = -1 * fBS.callput.delta('Call', prices[i], g1*S, r, q, sigma, t)
+  graph.delta.digital.one[i] = fBS.digital.call.delta(prices[i], g2*S, r, q, sigma, t)
+  graph.delta.digital.two[i] = fBS.digital.call.delta(prices[i], g3*S, r, q, sigma, t)
+  graph.delta.overall[i] = graph.delta.DI.put[i] + graph.delta.call[i] + 
+                          graph.delta.digital.one[i] + graph.delta.digital.two[i]
+}
+#-------------------------------------------------------------------------------
+
+# 6.3.2 - Delta graph
+
+results.delta <- data.frame(cbind(graph.delta.DI.put, 
+                                  graph.delta.call, 
+                                  graph.delta.digital.one, 
+                                  graph.delta.digital.two,
+                                  graph.delta.overall))
+
+# please add points to S, l1*S, l2*S, etc
+ggplot(results.delta, aes(x = prices)) + 
+  geom_line(linetype = "dashed", 
+            aes(y = graph.delta.DI.put, color = "DI Put delta")) + 
+  geom_line(linetype = "dashed", 
+            aes(y = graph.delta.call, color = "European Call delta")) +
+  geom_line(linetype = "dashed", 
+            aes(y = graph.delta.digital.one, color = "First Digital delta")) +
+  geom_line(linetype = "dashed", 
+            aes(y = graph.delta.digital.two, color = "Second Digital delta")) +
+  geom_line(linetype = "solid",
+            aes(y = graph.delta.overall, color="Total Delta")) +
+  scale_colour_manual(breaks = c("DI Put delta", "European Call delta", 
+                                 "First Digital delta", "Second Digital delta", 
+                                 "Total Delta"),
+                      values = c("violet", "darkorange","darkgreen", "darkblue", 
+                                 "black")) + 
+  xlab("Underlying Price") +
+  ylab("Delta") +
+  ggtitle("Delta at Maturity") 
+
+#ggsave("../graphs/ProfitPlotNotTriggered.png", width = 9.8, height = 8)
+#-------------------------------------------------------------------------------
+
 
 # cleaning up
 rm(prices)
@@ -528,3 +599,4 @@ rm(payoff.stock, payoff.DI.put.notrigger, payoff.DI.put.trigger, payoff.call,
 rm(profit.stock, profit.DI.put.notrigger, profit.DI.put.trigger, profit.call, 
    profit.first.digital.call, profit.second.digital.call,
    profit.notrigger.overall, profit.trigger.overall)
+
