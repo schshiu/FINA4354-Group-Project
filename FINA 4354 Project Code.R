@@ -8,7 +8,7 @@
 rm(list = ls())
 options(scipen = 999) # <- prevent using scientific notation
 
-#-------------------------------------------------------------------------------
+#===============================================================================
 
 # 1 - Library preparation
 # Check if client's computer has the library downloaded,
@@ -23,13 +23,12 @@ for (i in list.of.library) {
 }
 
 # Set working directory if needed
-# setwd("/Users/fuxipeng/1/港大学习资料/FINA4354/FINA 4354 GP")
-# !! In the following code, we assume the WD is in the repository base folder
-# Use "../" to access parent directory
+# !!! In the following code, we assume the WD is
+#     the "code" folder under repository root !!!
 
 rm(list.of.library, i) #Free up memory
 
-#-------------------------------------------------------------------------------
+#===============================================================================
 
 # 2 - Data processing
 # 2.1 - S&P500 data downloading
@@ -62,7 +61,7 @@ DGS6MO <- na.locf(getSymbols("DGS6MO", src = "FRED", auto.assign = FALSE))
 # 2.3 - Storing data to local repository
 
 # RDS file saving:
-data.path <- "./data"
+data.path <- "../data"
 saveRDS(SP500.raw.full, file = file.path(data.path, 'SP500.raw.full.rds'))
 saveRDS(SP500TR.raw, file = file.path(data.path, 'SP500TR.raw.rds'))
 saveRDS(SPY, file = file.path(data.path, 'SPY.rds'))
@@ -70,7 +69,7 @@ saveRDS(DGS6MO, file = file.path(data.path, 'DGS6MO.rds'))
 
 # CSV saving (more visible data):
 # change the xts into dataframe
-data.path <- "./data"
+data.path <- "../data"
 write.csv(data.frame(row.names = index(SP500.raw.full), 
                      coredata(SP500.raw.full)),
           file = file.path(data.path, 'SP500.raw.full.csv'))
@@ -88,14 +87,14 @@ rm(data.path)
 # 2.4 - Loading data from local repository
 
 # RDS file loading:
-data.path <- "./data"
+data.path <- "../data"
 SP500.raw.full <- readRDS(file = file.path(data.path, 'SP500.raw.full.rds'))
 SP500TR.raw <- readRDS(file = file.path(data.path, 'SP500TR.raw.rds'))
 SPY <- readRDS(file = file.path(data.path, 'SPY.rds'))
 DGS6MO <- readRDS(file = file.path(data.path, 'DGS6MO.rds'))
 
 # CSV file loading:
-data.path <- "./data"
+data.path <- "../data"
 SP500.raw.full <- as.xts(read.csv(file = file.path(data.path, 
                                                    'SP500.raw.full.csv'),
                                   row.names = 1))
@@ -108,7 +107,7 @@ DGS6MO <- as.xts(read.csv(file = file.path(data.path, 'DGS6MO.csv'),
 
 rm(data.path)
 
-#-------------------------------------------------------------------------------
+#===============================================================================
 
 # 3 - Parameter setting
 # 3.1 Find the dividend yield with S&P 500
@@ -159,15 +158,15 @@ total.miu <- miu * t * 252
 cat("Expected return during tenor t =", t, ":", total.miu, "\n")
 
 # period of floating loss: l*S ~ g1*S
-l1 <- 0.7      # Barrier level
-l2 <- 0.85     # Strike level if DI European put triggered
+l1 <- 0.70    # Barrier level
+l2 <- 0.85    # Strike level if DI European put triggered
 g1 <- 1 + total.miu             # g1*FV ~ g2*FV is the 1st step
 g2 <- 1 + total.miu * 2         # g2*FV ~ g3*FV is the 2nd step
 g3 <- 1 + total.miu * 3         # > g3*FV is the 3rd step (ceiling)
 cat("l1 =", l1, "\t", "l2 =", l2, "\n")
 cat("g1 =", g1, "\t", "g2 =", g2, "\t", "g3 =", g3, "\n")
 
-#-------------------------------------------------------------------------------
+#===============================================================================
 
 # 4 - Financial models
 # 4.1 - Pricing Functions of options used
@@ -249,44 +248,45 @@ cat("Long second digital call:\t", digital.two, "(h*S times)\n")
 # 4.3 - Exploration of step sizes
 
 # Each step size is h
-# If we take total product price = S, then
+# If we take total product price = S (no transaction cost), then
 # h = (call - DI.put) / (digital.one + digital.two) / S
-# Alternatively: total product price = 0.99 * S (1% price as transaction cost)
+# Alternatively: total product price = 0.98 * S (2% price as transaction cost)
 h = (call - DI.put - 0.02 * S) / (digital.one + digital.two) / S
 cat("Step size(h):", h, "\n")
 
 # check of equality
+(digital.one * h * S)
 total.price = S + DI.put - call + (digital.one + digital.two) * h * S
 cat("Total price =", total.price, "S =", S, "\n")
 cat("Total price / S =", total.price / S, "\n")
 
-#-------------------------------------------------------------------------------
+#===============================================================================
 
-# 4 - Hedging formulas
+# 5 - Hedging formulas
 # delta is change of option price against change of underlying price
 # In this section, t = tenor, tau = current time = 0
 
-# 4.1 - Delta of European Call/Put at tau = 0
+# 5.1 - Delta of European Call/Put at tau = 0
 # Beware of the Callput variable when using the functions 
 fBS.callput.delta <- function(CallPut, S, K, r, q, sigma, t) {
   d1 <- fd1(S, K, r, q, sigma, t)
   if (CallPut == 'Call') {
-    delta <- pnorm(d1)
+    delta <- exp(-q * t) * pnorm(d1)
   }
   else {
-    delta <- -pnorm(-d1)
+    delta <- -exp(-q * t) * pnorm(-d1)
   }
   return(delta)
 }
 
-# 4.2 - Delta of Digital Call
+# 5.2 - Delta of Digital Call
 fBS.digital.call.delta <- function(S, K, e, q, sigma, t) {
   const <- exp(-r * t) / (sigma * S * t)
   delta <- const * dnorm(fd2(S, K, r, q, sigma, t))
   return(delta)
 }
 
-# 4.3 - Delta of DI European put, by approximation approach
+# 5.3 - Delta of DI European put, by approximation approach
 fBS.DI.put.delta.approx <- function(S, K, H, r, q, sigma, t) {
   h <- 0.000001
   upper <- fBS.DI.put.price(S + h / 2, K, H, r, q, sigma, t)
@@ -294,22 +294,22 @@ fBS.DI.put.delta.approx <- function(S, K, H, r, q, sigma, t) {
   delta.approx <- (upper - lower) / h
 }
 
-# 4.4 - Delta of DI European put, by formula
-fBS.DI.put.delta <- function(S, K, H, r, q, sigma, t) {
+# 5.4 - Delta of DI European put, by formula
+fBS.DI.put.delta <- function(S, K, L, r, q, sigma, t) {
   v <- (r - q - 0.5 * sigma ^ 2)
-  const1 <- (H / S) ^ (2 * v / sigma^2) 
-  const1.diff <- H ^ (2 * v / sigma^2) * 
+  const1 <- (L / S) ^ (2 * v / sigma^2) 
+  const1.diff <- L ^ (2 * v / sigma^2) * 
     (-2 * v / sigma^2) * S ^ (-2 * v / sigma^2 -1)
-  #C(H^2/S,K)
-  call1 <- fBS.call.price(H^2/S, K, r, q, sigma, t)
-  delta1 <- (H^2 / S^2) * fBS.callput.delta('Call', H^2/S, K, r, q, sigma, t) 
-  #C(H^2/S,H)
-  call2 <- fBS.call.price(H^2/S, H, r, q, sigma, t)
-  delta2 <- (H^2 / S^2) * fBS.callput.delta('Call', H^2/S, H, r, q, sigma, t) 
-  #(H-K)e^(-rt)N(d2(H,S))
-  const2 <- (H - K) * exp(-r * t) * pnorm(fd2(H, S, r, q, sigma, t))
-  const2.diff <- (H - K) * exp(-r * t) / (S * sigma * sqrt(t)) * 
-    dnorm(fd2(H, S, r, q, sigma, t))
+  #C(L^2/S,K)
+  call1 <- fBS.call.price(L^2/S, K, r, q, sigma, t)
+  delta1 <- (L^2 / S^2) * fBS.callput.delta('Call', L^2/S, K, r, q, sigma, t) 
+  #C(L^2/S,L)
+  call2 <- fBS.call.price(L^2/S, L, r, q, sigma, t)
+  delta2 <- (L^2 / S^2) * fBS.callput.delta('Call', L^2/S, L, r, q, sigma, t) 
+  #(L-K)e^(-rt)N(d2(L,S))
+  const2 <- (L - K) * exp(-r * t) * pnorm(fd2(L, S, r, q, sigma, t))
+  const2.diff <- (L - K) * exp(-r * t) / (S * sigma * sqrt(t)) * 
+    dnorm(fd2(L, S, r, q, sigma, t))
   
   deltas.diff <- -delta1 + delta2 + const2.diff
   part1.diff <- const1 * deltas.diff
@@ -319,14 +319,14 @@ fBS.DI.put.delta <- function(S, K, H, r, q, sigma, t) {
   
   part1 <- part1.diff + part2.diff
   
-  part2 <- fBS.callput.delta('Put', S, H, r, q, sigma, t) + 
-    (H - K) * exp(-r * t) * dnorm(-1 * fd2(S, H, r, q, sigma, t)) / 
+  part2 <- fBS.callput.delta('Put', S, L, r, q, sigma, t) + 
+    (L - K) * exp(-r * t) * dnorm(-1 * fd2(S, L, r, q, sigma, t)) / 
     (S * sigma * sqrt(t))
   
   return(part1 + part2)
 }
 
-# 4.5 - Calculation of component delta
+# 5.5 - Calculation of component delta
 # Delta of long 1 stock is 1, trivially
 delta.DI.put <- fBS.DI.put.delta(S, l2*S, l1*S, r, q, sigma, t)
 delta.DI.put.approx <- fBS.DI.put.delta.approx(S, l2*S, l1*S, r, q, sigma, t)
@@ -336,100 +336,109 @@ delta.digital.two <- fBS.digital.call.delta(S, g3*S, r, q, sigma, t)
 
 cat("Delta values of each component:\n")
 cat("Long Stock:\t1\n")
-cat("Long DI European Put (Calculated):", delta.DI.put, "\n")
+cat("Long DI European Put (Calculated):\t", delta.DI.put, "\n")
 cat("(Or alternatively:)\n")
-cat("Long DI European Put (approximated):", delta.DI.put.approx, "\n")
-cat("Short European call:\t", delta.call, "\n")
+cat("Long DI European Put (approximated):\t", delta.DI.put.approx, "\n")
+cat("Short European call:\t\t", delta.call, "\n")
 cat(h*S, "x Long First Digital Call(s):\t", delta.digital.one, "\n")
 cat(h*S, "x Long Second Digital Call(s):\t", delta.digital.two, "\n")
 cat("Total delta (stock position required):\t",
     sum(1, delta.DI.put, delta.call, 
         h * S * delta.digital.one, h * S * delta.digital.two))
 
-#-------------------------------------------------------------------------------
+#===============================================================================
 
-# 5 - Graph plotting
-# 5.1 - S&P 500 market trend plot & return Q-Q plot
+# 6 - Graph plotting
+# 6.1 - S&P 500 market trend plot & return Q-Q plot
 
 # Last 10 year S&P500 bar chart
+png(file = "../graphs/S&P500_Trend_Last_10_Years.png", 
+    width = 800, height = 500)
 barChart(SP500.raw.full, theme = "white.mono", bar.type = "hlc")
+dev.off()
 
 # Last 3 years S&P500 daily return
+png(file = "../graphs/S&P500_Return_QQPlot_Last_10_Years.png", 
+    width = 800, height = 500)
 qqnorm(SP500.DayRet)
+dev.off()
 rm(SP500.DayRet)
 
 #-------------------------------------------------------------------------------
 
-# 5.2 - Plot expected payoff graph
-# 5.2.1 - Preparation
+# 6.2 - Plot expected payoff graph
+# 6.2.1 - Preparation
 
-minprice <- 0
-maxprice <- 2 * S
+minprice <- 0.5 * S
+maxprice <- 1.5 * S
 prices <- seq(minprice, maxprice, 1)
 n <- length(prices)
-rm(minprice, maxprice)
 
+# Payoff setting
 payoff.stock <- vector(mode = "numeric", n)
-payoff.DI.put <- vector(mode = "numeric", n)
+payoff.DI.put.notrigger <- vector(mode = "numeric", n)
+payoff.DI.put.trigger <- vector(mode = "numeric", n)
 payoff.call <- vector(mode = "numeric", n)
-# the two digital calls are in total amount
 payoff.first.digital.call <- vector(mode = "numeric", n)
 payoff.second.digital.call <- vector(mode = "numeric", n)
 
 for (i in 1:n) {
   payoff.stock[i] = prices[i]
-  # payoff.DI.put[i]: different in two cases
+  # DI Put: Different payoffs when triggered or not
+  payoff.DI.put.notrigger[i] = 0
+  payoff.DI.put.trigger[i] = max(l2 * S - prices[i], 0)
   payoff.call[i] = - max(prices[i] - g1*S, 0) #short call
+  # h * S number of digital calls
   payoff.first.digital.call[i] = h * S * if(prices[i] > g2*S) 1 else 0
   payoff.second.digital.call[i] = h * S * if(prices[i] > g3*S) 1 else 0
 }
 
+# Profit setting
+profit.stock <- payoff.stock - as.vector(S)
+profit.DI.put.notrigger <- payoff.DI.put.notrigger - as.vector(DI.put)
+profit.DI.put.trigger <- payoff.DI.put.trigger - as.vector(DI.put)
+profit.call <- payoff.call + as.vector(call)
+profit.first.digital.call <- payoff.first.digital.call - 
+  h * S * as.vector(digital.one)
+profit.second.digital.call <- payoff.second.digital.call - 
+  h * S * as.vector(digital.two)
+
 #-------------------------------------------------------------------------------
 
-# 5.2.2 - Profit graph (split up) When the barrier is not triggered
-# Note: 5.2.2 and 5.2.3 have conflict variables
-payoff.DI.put = rep(0, times = n)
+# 6.2.2 - Profit graph (split up) when the barrier is not triggered
+profit.notrigger.overall <- rowSums(cbind(profit.stock,
+                                          profit.DI.put.notrigger,
+                                          profit.call,
+                                          profit.first.digital.call,
+                                          profit.second.digital.call,
+                                          as.vector(-0.02 * S)))
+# Transaction cost is removed
 
-profit.stock <- payoff.stock - as.vector(S)
-profit.DI.put <- payoff.DI.put - as.vector(DI.put)
-profit.call <- payoff.call - as.vector(call)
-profit.first.digital.call <- payoff.first.digital.call - as.vector(digital.one)
-profit.second.digital.call <- 
-  payoff.second.digital.call - as.vector(digital.two)
-
-profit.overall <- rowSums(cbind(profit.stock,
-                                profit.DI.put,
-                                profit.call,
-                                profit.first.digital.call,
-                                profit.second.digital.call))
-
-# Generate a data_frame all vectors
+# Generate a dataframe for all vectors
 # in order to plot the strategy payoffs using ggplot
-results <- data.frame(cbind(profit.stock,
-                            profit.DI.put,
-                            profit.call,
-                            profit.first.digital.call,
-                            profit.second.digital.call,
-                            profit.overall))
-results.notrigger <- results
-results.notrigger[1:floor(l1*S), ] <- NA
+results.notrigger <- data.frame(cbind(profit.stock,
+                                      profit.DI.put.notrigger,
+                                      profit.call,
+                                      profit.first.digital.call,
+                                      profit.second.digital.call,
+                                      profit.notrigger.overall))
 
-# Plot based on percentage of S
-prices.percent <- prices / S
-results.notrigger.percent <- results.notrigger / S
+# Cut off the part lower than barrier
+# This causes some warnings, but no impact on plotting
+results.notrigger[1:(floor(l1*S - minprice)), ] <- NA
 
 # please add points to S, l1*S, l2*S, etc
-ggplot(results.notrigger.percent, aes(x = prices.percent)) + 
+ggplot(results.notrigger / S, aes(x = prices / S)) + 
   geom_line(linetype = "dashed", aes(y = profit.stock, color = "Stock")) + 
   geom_line(linetype = "dashed", 
-            aes(y = profit.DI.put, color = "DI European Put")) +
+            aes(y = profit.DI.put.notrigger, color = "DI European Put")) +
   geom_line(linetype = "dashed", 
             aes(y = profit.call, color = "European Call")) +
   geom_line(linetype = "dashed", 
             aes(y = profit.first.digital.call, color = "First Digital")) +
   geom_line(linetype = "dashed", 
             aes(y = profit.second.digital.call, color = "Second Digital")) +
-  geom_line(aes(y = profit.overall, color="Total Profit")) +
+  geom_line(aes(y = profit.notrigger.overall, color="Total Profit")) +
   scale_colour_manual("", 
                       breaks = c("Stock", "DI European Put", "European Call", 
                                  "First Digital", "Second Digital", 
@@ -438,66 +447,84 @@ ggplot(results.notrigger.percent, aes(x = prices.percent)) +
                                  "darkgreen", "darkblue", "black")) + 
   xlab("Underlying Price") +
   ylab("Profit") +
-  ggtitle("Product Profit Percentage (R) at Maturity (Not Triggered)")
+  ggtitle("Product Profit Percentage (R) at Maturity (Not Triggered)") + 
+  xlim(0.5, 1.5) + ylim(-0.5, 0.5)
+
+ggsave("../graphs/ProfitPlotNotTriggered.png", width = 9.8, height = 8)
 
 #-------------------------------------------------------------------------------
 
-# 5.2.3 - Profit graph (split up) When the barrier is triggered
+# 6.2.3 - Profit graph (split up) when the barrier is triggered
 
-# When the barrier is triggered:
-for (i in 1:n) {
-  payoff.DI.put[i] = max(l2 * S - prices[i], 0)
-}
+profit.trigger.overall <- rowSums(cbind(profit.stock,
+                                        profit.DI.put.trigger,
+                                        profit.call,
+                                        profit.first.digital.call,
+                                        profit.second.digital.call,
+                                        as.vector(-0.02 * S)))
 
-profit.stock <- payoff.stock - as.vector(S)
-profit.DI.put <- payoff.DI.put - as.vector(DI.put)
-profit.call <- payoff.call - as.vector(call)
-profit.first.digital.call <- payoff.first.digital.call - as.vector(digital.one)
-profit.second.digital.call <- 
-  payoff.second.digital.call - as.vector(digital.two)
-
-profit.overall <- rowSums(cbind(profit.stock,
-                                profit.DI.put,
-                                profit.call,
-                                profit.first.digital.call,
-                                profit.second.digital.call))
-
-# Generate a data_frame all vectors
+# Generate a dataframe for all vectors
 # in order to plot the strategy payoffs using ggplot
-results <- data.frame(cbind(profit.stock,
-                            profit.DI.put,
-                            profit.call,
-                            profit.first.digital.call,
-                            profit.second.digital.call,
-                            profit.overall))
+results.trigger <- data.frame(cbind(profit.stock,
+                                    profit.DI.put.trigger,
+                                    profit.call,
+                                    profit.first.digital.call,
+                                    profit.second.digital.call,
+                                    profit.trigger.overall))
 
-# Plot based on percentage of S
-prices.percent <- prices / S
-results.percent <- results / S
-
-# please add points to S, l1*S, l2*S, etc
-ggplot(results.percent, aes(x = prices.percent)) + 
+ggplot(results.trigger / S, aes(x = prices / S)) + 
   geom_line(linetype = "dashed", aes(y = profit.stock, color = "Stock")) + 
   geom_line(linetype = "dashed", 
-            aes(y = profit.DI.put, color = "DI European Put")) +
+            aes(y = profit.DI.put.trigger, color = "DI European Put")) +
   geom_line(linetype = "dashed", 
             aes(y = profit.call, color = "European Call")) +
   geom_line(linetype = "dashed", 
             aes(y = profit.first.digital.call, color = "First Digital")) +
   geom_line(linetype = "dashed", 
             aes(y = profit.second.digital.call, color = "Second Digital")) +
-  geom_line(aes(y = profit.overall, color="Profit")) +
+  geom_line(aes(y = profit.trigger.overall, color="Total Profit")) +
   scale_colour_manual("", 
                       breaks = c("Stock", "DI European Put", "European Call", 
-                                 "First Digital", "Second Digital", "Profit"),
+                                 "First Digital", "Second Digital", 
+                                 "Total Profit"),
                       values = c("darkred", "darkorange", "violet",  
                                  "darkgreen", "darkblue", "black")) + 
   xlab("Underlying Price") +
   ylab("Profit") +
-  ggtitle("Product Profit Percentage (R) at Maturity (Triggered)")
+  ggtitle("Product Profit Percentage (R) at Maturity (Not Triggered)") + 
+  xlim(0.5, 1.5) + ylim(-0.5, 0.5)
+
+ggsave("../graphs/ProfitPlotTriggered.png", width = 9.8, height = 8)
+
+#-------------------------------------------------------------------------------
+
+# 6.2.4 - Combined total profit when triggered/not triggered
+# Complete 6.2.2 & 6.2.3 first
+
+combined <- data.frame(cbind(profit.trigger.overall, profit.notrigger.overall))
+combined[1:(floor(l1*S - minprice)), 2] <- NA
+
+ggplot(combined / S, aes(x = prices / S)) + 
+  geom_line(linetype = "dashed", 
+    aes(y = profit.notrigger.overall, color="Before Triggering")) + 
+  geom_line(aes(y = profit.trigger.overall, color="After Triggering")) + 
+  scale_colour_manual("", 
+                      breaks = c("Before Triggering", "After Triggering"),
+                      values = c("darkred", "black")) + 
+  xlab("Underlying Price") +
+  ylab("Profit") +
+  ggtitle("Product Profit Percentage (R) at Maturity, before & after triggering"
+          ) + 
+  xlim(0.5, 1.5) + ylim(-0.5, 0.5)
+
+ggsave("../graphs/ProfitPlotCombined.png", width = 9.8, height = 8)
+
+#-------------------------------------------------------------------------------
 
 # cleaning up
-rm(payoff.stock, payoff.DI.put, payoff.call, 
-   payoff.first.digital.call, payoff.second.digital.call, payoff.overall)
-rm(profit.stock, profit.DI.put, profit.call, 
-   profit.first.digital.call, profit.second.digital.call, profit.overall)
+rm(prices)
+rm(payoff.stock, payoff.DI.put.notrigger, payoff.DI.put.trigger, payoff.call, 
+   payoff.first.digital.call, payoff.second.digital.call)
+rm(profit.stock, profit.DI.put.notrigger, profit.DI.put.trigger, profit.call, 
+   profit.first.digital.call, profit.second.digital.call,
+   profit.notrigger.overall, profit.trigger.overall)
